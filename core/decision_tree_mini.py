@@ -1,10 +1,10 @@
 # Create a decision tree class
 import numpy as np
 import pandas as pd
-
+from core.utils import rmse, make_bulk_prediction
 
 class DT:
-    def __init__(self, value=None, ln=None, rn=None, minimum_obs=20, maximum_tree_size=-1, current_height=0):
+    def __init__(self, value=None, ln=None, rn=None, minimum_obs=20, maximum_tree_size=None, current_height=0):
         self.ln = None
         self.rn = None
         self.value = value
@@ -15,14 +15,9 @@ class DT:
         self.max_tree_size = maximum_tree_size
         self.node_height = current_height
 
-    def _rmse(self, target, mean):
-        diff = target - mean
-        diff = np.power(diff, 2)
-        return np.mean(np.sqrt(diff))
-
     def fit(self, X, y):
         # Check if tree is at maximum height
-        if self.max_tree_size < self.node_height + 1:
+        if self.max_tree_size is not None and self.max_tree_size < self.node_height + 1:
             self.target_val = np.mean(y)
             self.idx_feat = None
             return self
@@ -44,8 +39,8 @@ class DT:
                 if any([i.sum() == 0 for i in [sl, sr]]):
                     continue
 
-                sl_rsme = self._rmse(y[sl], np.mean(y[sl]))
-                sr_rsme = self._rmse(y[sr], np.mean(y[sr]))
+                sl_rsme = rmse(y[sl], np.mean(y[sl]))
+                sr_rsme = rmse(y[sr], np.mean(y[sr]))
 
                 if sl_rsme + sr_rsme < best_split[2]:
                     best_split = [idx, perc, sl_rsme + sr_rsme]
@@ -118,16 +113,31 @@ class DT:
 def _test():
     df = pd.read_csv('../data/cosmetics.csv')
 
-    y = df.Price.values
-    _feats = ['Rank', 'Sensitive']
-    X = df[_feats].values
+    # Include super feature
+    df['super'] = df.Price.apply(np.log)
 
-    _minobs = 100
+    train_num = int(np.ceil(df.shape[0]*0.8))
+    y = df.Price.values[0:train_num]
+    y_test = df.Price.values[train_num::]
+    _feats = ['Rank', 'Sensitive', 'super']
+    X = df[_feats].values[0:train_num]
+    X_test = df[_feats].values[train_num::]
 
-    test = DT(minimum_obs=_minobs, maximum_tree_size=3)
+    _minobs = 20
+    test = DT(minimum_obs=_minobs, maximum_tree_size=None)
     test = test.fit(X, y)
     test.print_tree(test, col_names=_feats)
-    X_test = np.array([4.0, 1.0])
-    print(f"PREDICT ({X_test}) = {test.predict(test, X_test)}")
 
-_test()
+    pred_test = make_bulk_prediction(X_test, test)
+    pred_train = make_bulk_prediction(X, test)
+
+    print(f"TRAIN RMSE = {rmse(y, pred_train)}")
+    print(f"TEST RMSE = {rmse(y_test, pred_test)}")
+    print(f"TEST MEAN RMSE = {rmse(y_test, np.mean(y_test))}")
+    print(f"TRAIN MEAN RMSE = {rmse(y, np.mean(y))}")
+
+
+
+
+if __name__ == '__main__':
+    _test()
